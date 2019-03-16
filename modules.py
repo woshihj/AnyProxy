@@ -21,7 +21,7 @@ class ThreadedModule:
 
     def __init__(self, module_name=None, module_uuid=None):
         self.__uuid = module_uuid if module_uuid else uuid.uuid4().hex
-        self.__name = module_name if module_name else 'MODULE_%s' % self.__uuid
+        self.__name = module_name if module_name else self.__uuid
         self.__thread_handler = None
         self.__thread_callback = ThreadedModule.__default_thread
         self.__status = ThreadedModule.Status.PREPARE
@@ -51,7 +51,7 @@ class ThreadedModule:
 
     def start(self):
         if self.get_status() != ThreadedModule.Status.PREPARE:
-            raise ModuleError('Module <%s> starts before initialization.' % self.get_name())
+            raise ModuleError('Module<%s> starts before initialization.' % self.get_name())
         self.__thread_handler = Thread(target=self.__thread_callback,
                                        name=self.__name,
                                        args=(),

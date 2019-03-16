@@ -55,7 +55,7 @@ class _Proxy(ThreadedModule):
                     return conn
             sleep(0.25)
             time_wait += 0.25
-        raise ProxyError('waiting for client\'s establishment timeout after %d seconds' % timeout)
+        raise ProxyError('Waiting client\'s connection timeout after %ds.' % timeout)
 
     def __startup_service(self):
         """初始化数据结构，根据端口映射表依次启动对应的端口服务，并将主连接加入监听。"""
@@ -94,7 +94,7 @@ class _Proxy(ThreadedModule):
     def __start_listening(self, port):
         """启动一个需要监听的端口"""
         if port not in self.__port_map:
-            raise ProxyError('can not find port(%d) in port mapping list' % port)
+            raise ProxyError('Port(%d) is not listed in mapping table.' % port)
         sock = tcp_listen(self.__sock_main.getsockname()[0], port,
                           blocking=False, max_conn=Protocol.MAX_CONNECTIONS)
         self.__port_fd[port] = sock.fileno()
@@ -105,10 +105,10 @@ class _Proxy(ThreadedModule):
     def __stop_listening(self, port):
         """关闭一个正在监听的端口"""
         if port not in self.__port_map:
-            raise ProxyError('can not find port(%d) in port mapping list' % port)
+            raise ProxyError('Port(%d) is not listed in mapping table.' % port)
         sock_fd = self.__port_fd[port]
         if sock_fd is None:
-            raise ProxyError('port(%s) is not on listening' % port)
+            raise ProxyError('Port(%s) is not in listening.' % port)
         for k in list(self.__port_fds[port]):
             self.__remove_pair(k)
         self.__epoll.unregister(sock_fd)
@@ -125,14 +125,14 @@ class _Proxy(ThreadedModule):
             _, conn_uuid = Protocol.request_client(self.__sock_main, Protocol.Command.ADD_NEW_CONNECTION,
                                                    self.__port_map[port], timeout=Protocol.DEFAULT_TIMEOUT)
             if len(conn_uuid) != Protocol.UUID_LENGTH:
-                raise ProtocolError('invalid uuid:%s from proxy client' % conn_uuid)
+                raise ProtocolError('Invalid uuid:%s from proxy client.' % conn_uuid)
 
             conn2 = self.__wait_for_connection(conn_uuid, timeout=Protocol.DEFAULT_TIMEOUT)
 
             _, status = Protocol.request_client(self.__sock_main, Protocol.Command.CONFIRM_CONNECTION,
                                                 conn_uuid, timeout=Protocol.DEFAULT_TIMEOUT)
             if status != Protocol.Result.SUCCESS:
-                raise ProtocolError('invalid confirmation(%s) from proxy client' % status)
+                raise ProtocolError('Invalid confirmation(%s) from proxy client.' % status)
         except Exception as e:
             if conn1:
                 conn1.close()
@@ -168,8 +168,8 @@ class _Proxy(ThreadedModule):
                 fd1 = self.__fd_to_fd[key_fd]
                 break
         if not port:
-            raise ProxyError('remove connection(fd=%d) failed as not found' % key_fd)
-        log.info('client(%s:%d) -x-> server(:%d)' %
+            raise ProxyError('Remove connection(fd=%d) failed as not found.' % key_fd)
+        log.info('Client(%s:%d) --x-> Server(:%d)' %
                  (self.__fd_to_socket[fd2].getpeername()[0], self.__port_map[port], port))
         self.__epoll.unregister(fd1)
         self.__epoll.unregister(fd2)
@@ -189,7 +189,7 @@ class _Proxy(ThreadedModule):
             log.error(e)
             self.set_status(ThreadedModule.Status.STOPPED)
             return
-        log.warning('Module<%s> Started!' % current_thread().name)
+        log.info('Module<%s> Started!' % current_thread().name)
         self.set_status(ThreadedModule.Status.RUNNING)
         try:
             while self._continue_running_thread():
@@ -203,16 +203,16 @@ class _Proxy(ThreadedModule):
                         #
                         while self._continue_running_thread():
                             sleep(0.1)
-                        raise ProxyError('proxy exits as main connection lost, or closed by peer client')
+                        raise ProxyError('Client<%s> connection closed!' % self.get_uuid())
                     elif fd in self.__port_fd.values():
                         sock = self.__fd_to_socket[fd]
                         port = sock.getsockname()[1]
                         if event & ~select.EPOLLIN:
-                            raise ProxyError('proxy exits as listening port(%d) closed' % port)
+                            raise ProxyError('Proxy will exit as listening port(%d) failure.' % port)
                         else:
                             try:
                                 conn1, conn2 = self.__add_pair(port)
-                                log.info('client(%s:%d) --> server(:%d)' %
+                                log.info('Client(%s:%d) ----> Server(:%d)' %
                                          (conn2.getpeername()[0], self.__port_map[port], port))
                             except Exception as e:
                                 log.error(e)
@@ -297,14 +297,14 @@ class ProxyServer(ThreadedModule):
         try:
             ini_map = eval(data)
         except Exception:
-            raise ProtocolError('client uploads invalid data for `port_map` to confirm: %s' % data)
+            raise ProtocolError('Client uploads invalid data for `port_map` to confirm: %s' % data)
         confirm = {k: v for k, v in ini_map.items() if not check_listening(self.__host, ini_map[k])}
         if not confirm:
-            raise ProxyError('no port can be mapped after resource checking')
+            raise ProxyError('Empty port mapping table after filtering.')
         cmd, status = Protocol.request_client(sock, Protocol.Command.CONFIRM_MAPPING_PORTS,
                                               confirm, timeout=Protocol.DEFAULT_TIMEOUT)
         if status != Protocol.Result.SUCCESS:
-            raise ProtocolError('proxy client refused to continue making proxy')
+            raise ProtocolError('Proxy client refused to continue making proxy.')
         return {v: k for k, v in confirm.items()}
 
     def __thread_main(self):
@@ -360,7 +360,7 @@ class ProxyServer(ThreadedModule):
                 for fd, event in events:
                     if fd == self.__sock_server.fileno():
                         if event & ~select.EPOLLIN:
-                            raise ProxyError('server exits as listening on port(%d) failed' % self.__port)
+                            raise ProxyError('Server will exit as listening port(%d) failure.' % self.__port)
                         try:
                             conn, address = self.__sock_server.accept()
                             conn.setblocking(False)
@@ -375,7 +375,8 @@ class ProxyServer(ThreadedModule):
                             try:
                                 mapping_ports = self.__consult_mapping_ports(conn)
                                 if not mapping_ports:
-                                    raise ProxyError('no port can proxy, discards target request')
+                                    raise ProxyError(
+                                        'Client<%s> discarded as no port needs mapping.' % client_uuid)
                                 proxy_server = _Proxy(client_uuid, conn, mapping_ports)
                                 proxy_server.start()
                                 self.__epoll.register(conn.fileno(), select.EPOLLRDHUP)
@@ -385,21 +386,20 @@ class ProxyServer(ThreadedModule):
                                 log.error(e)
                                 conn.close()
                             else:
-                                log.info('client<%s> created with mapping: %s' %
-                                         (client_uuid, str(mapping_ports)))
+                                log.info('Client<%s> mapped %s.' % (client_uuid, str(mapping_ports)))
                         elif len(data) == Protocol.UUID_LENGTH * 2 + len(Protocol.DATA_SEPARATOR):
                             client_uuid, conn_uuid = data.split(Protocol.DATA_SEPARATOR)
                             try:
                                 if client_uuid not in self.__proxy_clients.keys():
                                     raise ProxyError(
-                                        'unclaimed connection<%s> for client<%s> which not found' %
+                                        'Unclaimed connection<%s> for client<%s>.' %
                                         (conn_uuid, client_uuid))
                                 self.__proxy_clients[client_uuid].on_connection_received(conn_uuid, conn)
                             except Exception as e:
                                 log.error(e)
                                 conn.close()
                         else:
-                            log.warning('unidentified connection from %s:%d with data: %s' %
+                            log.warning('Unidentified connection from %s:%d with data: %s' %
                                         (address[0], address[1], data))
                             conn.close()
                     elif event & ~select.EPOLLIN:
@@ -408,7 +408,7 @@ class ProxyServer(ThreadedModule):
                         self.__proxy_clients[k].stop()
                         del self.__proxy_clients[k]
                         del self.__proxy_fd[k]
-                        log.error('client<%s> removed' % k)
+                        log.error('Client<%s> removed.' % k)
                     else:
                         pass
         except Exception as e:
@@ -436,4 +436,6 @@ if __name__ == '__main__':
     try:
         __proxy_client.wait_exit()
     except KeyboardInterrupt:
+        pass
+    finally:
         __proxy_client.stop()

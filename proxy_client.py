@@ -30,12 +30,12 @@ class ProxyClient(ThreadedModule):
         self.__epoll                    listens: mapped_ports & connections, exclude `self.__sock_main`
         """
         if type(server_port) != int:
-            raise ProxyError('invalid argument for `server_port`: %s' % server_port)
+            raise ProxyError('Invalid argument for `server_port`: %s' % server_port)
         if not port_map:  # TODO: variables checking
-            raise ProxyError('invalid argument for `port_map`: %s' % port_map)
+            raise ProxyError('Invalid argument for `port_map`: %s' % port_map)
         for p in port_map.keys():
             if type(p) != int or type(port_map[p]) != int or list(port_map.values()).count(port_map[p]) != 1:
-                raise ProxyError('invalid argument for `port_map`: %s' % port_map)
+                raise ProxyError('Invalid argument for `port_map`: %s' % port_map)
         if not client_uuid or len(client_uuid) != Protocol.UUID_LENGTH:
             client_uuid = uuid.uuid4().hex
         super().__init__(module_name='CLIENT_'+client_uuid[:8], module_uuid=client_uuid)
@@ -69,9 +69,9 @@ class ProxyClient(ThreadedModule):
             try:
                 self.__port_map = eval(data)
             except Exception:
-                raise ProtocolError('server responses invalid data for confirmed `port_map`: %s' % data)
+                raise ProtocolError('Invalid argument for `port_map`: %s' % data)
             if not self.__port_map:
-                raise ProxyError('no port needs to be mapped after client or server filtering')
+                raise ProxyError('Empty port mapping table after filtering.')
             Protocol.response_server(self.__sock_main, cmd, Protocol.Result.SUCCESS)
 
             self.__port_fds = {x: [] for x in self.__port_map.keys()}
@@ -92,11 +92,11 @@ class ProxyClient(ThreadedModule):
     def __reconnect(self):
         """先关闭现有的数据连接及主连接，再根据策略重新建立连接。如果服务器在较长时间无法访问，重连时间会逐步延长。"""
         self.__disconnect()
-        log.info('reconnecting...')
+        log.info('Reconnecting...')
         time_wait = wait_inc = 0
         while self._continue_running_thread():
             if not check_listening(self.__server_host, self.__server_port):
-                log.warning('service(%s:%d) is unreachable' % (self.__server_host, self.__server_port))
+                log.warning('Service(%s:%d) is unreachable.' % (self.__server_host, self.__server_port))
                 if time_wait < Protocol.MAX_RETRY_WAIT_TIME:
                     if wait_inc < Protocol.MAX_RETRY_WAIT_TIME:
                         wait_inc += 1
@@ -107,7 +107,7 @@ class ProxyClient(ThreadedModule):
                 continue
             try:
                 self.__connect()
-                log.info('<%s> is now reconnected!' % self.get_name())
+                log.info('Client<%s> is now reconnected!' % self.get_name())
                 break
             except Exception as e:
                 log.error(e)
@@ -115,7 +115,7 @@ class ProxyClient(ThreadedModule):
     def __add_pair(self):
         """根据握手协议要求，在本地建立双向两个连接，并将连接信息记录到数据结构。"""
         conn_uuid = uuid.uuid4().hex
-        uuid_pair = '%s*%s' % (self.get_uuid(), conn_uuid)
+        uuid_pair = '%s%s%s' % (self.get_uuid(), Protocol.DATA_SEPARATOR, conn_uuid)
         conn1 = conn2 = None
         try:
             cmd, data = Protocol.receive_request(
@@ -123,7 +123,7 @@ class ProxyClient(ThreadedModule):
             try:
                 port = int(data)
             except ValueError:
-                raise ProtocolError('invalid argument for `port`(to add connection on): %s' % data)
+                raise ProtocolError('Invalid argument for `port`(to add connection on): %s' % data)
             conn1 = tcp_connect('', port, blocking=False)
             conn2 = tcp_connect(self.__server_host, self.__server_port, blocking=False)
             Protocol.response_server(self.__sock_main, cmd, conn_uuid)
@@ -138,7 +138,7 @@ class ProxyClient(ThreadedModule):
                 Protocol.response_server(self.__sock_main, cmd, Protocol.Result.SUCCESS)
             else:
                 Protocol.response_server(self.__sock_main, cmd, Protocol.Result.ERROR)
-                raise ProxyError('expects uuid: <%s>, receives uuid: <%s>' % (conn_uuid, data))
+                raise ProxyError('Expected uuid:<%s> while received uuid:<%s>.' % (conn_uuid, data))
         except Exception as e:
             if conn1:
                 conn1.close()
@@ -172,8 +172,8 @@ class ProxyClient(ThreadedModule):
                 fd1 = self.__fd_to_fd[key_fd]
                 break
         if not port:
-            raise ProxyError('connection(fd=%d) not found' % key_fd)
-        log.info('local(%s:%d) --x-> server(%s:%d)' %
+            raise ProxyError('Connection(fd=%d) not found.' % key_fd)
+        log.info('Local(%s:%d) --x-> Server(%s:%d)' %
                  (self.__fd_to_socket[fd1].getpeername()[0], port,
                   self.__server_host, self.__port_map[port]))
         self.__epoll.unregister(fd1)
@@ -194,7 +194,7 @@ class ProxyClient(ThreadedModule):
             log.error(e)
             self.set_status(ThreadedModule.Status.STOPPED)
             return
-        log.warning('Module<%s> Started!' % current_thread().name)
+        log.info('Module<%s> Started!' % current_thread().name)
         self.set_status(ThreadedModule.Status.RUNNING)
         try:
             while self._continue_running_thread():
@@ -204,13 +204,13 @@ class ProxyClient(ThreadedModule):
                 for fd, event in events:
                     if fd == self.__sock_main.fileno():
                         if event & ~select.EPOLLIN:
-                            log.critical('disconnected from server(%s:%d)' %
+                            log.critical('Disconnected from server(%s:%d).' %
                                          (self.__server_host, self.__server_port))
                             self.__reconnect()
                         else:
                             try:
                                 port, conn1, conn2 = self.__add_pair()
-                                log.info('local(%s:%d) ----> server(%s:%d)' %
+                                log.info('Local(%s:%d) ----> Server(%s:%d)' %
                                          (conn1.getpeername()[0], port,
                                           self.__server_host, self.__port_map[port]))
                             except Exception as e:
@@ -251,4 +251,6 @@ if __name__ == '__main__':
     try:
         __proxy_client.wait_exit()
     except KeyboardInterrupt:
+        pass
+    finally:
         __proxy_client.stop()

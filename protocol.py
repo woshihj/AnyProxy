@@ -6,7 +6,7 @@ class ProtocolError(Exception):
     """协议错误
     """
     def __init__(self, msg='', cmd=None, data=None):
-        err = '%s (cmd: %s, data: %s)' % (msg, cmd, data) if cmd is not None else msg
+        err = '%s (command: %s, data: %s)' % (msg, cmd, data) if cmd is not None else msg
         Exception.__init__(self, err)
         self.cmd = cmd
         self.data = data
@@ -56,13 +56,13 @@ class Protocol:
     @staticmethod
     def __req_str(cmd_str, val_str):
         if not cmd_str:
-            raise ProtocolError('protocol command receives empty string', cmd_str, val_str)
+            raise ProtocolError('Protocol command receives empty string.', cmd_str, val_str)
         return '<%s>%s</%s>' % (str(cmd_str), str(val_str), str(cmd_str))
 
     @staticmethod
     def __resp_str(cmd_str, val_str):
         if not cmd_str:
-            raise ProtocolError('protocol command receives empty string', cmd_str, val_str)
+            raise ProtocolError('Protocol command receives empty string.', cmd_str, val_str)
         return '<%s>%s:%s</%s>' % (Protocol.__STR_RESPONSE, str(cmd_str), str(val_str), Protocol.__STR_RESPONSE)
 
     @staticmethod
@@ -71,7 +71,7 @@ class Protocol:
         p2 = req.find('<', 2, -1)
         if req[0] == '<' and 0 < p1 < p2 and req[-1] == '>' and req[1:p1] == req[p2+2:-1]:
             return req[1:p1], req[p1+1:p2]
-        raise ProtocolError('parsing invalid request string: %s' % req)
+        raise ProtocolError('Parsing invalid request: %s' % req)
 
     @staticmethod
     def __parse_resp_str(resp):
@@ -81,7 +81,7 @@ class Protocol:
         if p > 0 and len(resp) >= len(Protocol.__resp_str('z', '')) and \
                 resp[:len(prefix)] == prefix and resp[-len(suffix):] == suffix:
             return resp[len(prefix):p], resp[p+1:-len(suffix)]
-        raise ProtocolError('parsing invalid response string: %s' % resp)
+        raise ProtocolError('Parsing invalid response: %s' % resp)
 
     @staticmethod
     def request_client(conn, cmd, data='', timeout=-1):
@@ -102,12 +102,12 @@ class Protocol:
                 if resp_cmd == cmd:
                     return resp_cmd, resp_data
                 else:
-                    raise ProtocolError('expects command: <%s>, receives command: <%s>' % (req_str, resp_str))
+                    raise ProtocolError('Expected <%s> while received <%s>.' % (req_str, resp_str))
             except BlockingIOError:
                 pass
             sleep(0.25)
             time_wait += 0.25
-        raise ProtocolError('waiting for client\'s response timeout after %d seconds' % timeout, cmd, data)
+        raise ProtocolError('Waiting client response timeout after %ds.' % timeout, cmd, data)
 
     @staticmethod
     def receive_request(conn, expect_cmd=None, timeout=-1):
@@ -124,14 +124,14 @@ class Protocol:
                 req_cmd, req_data = Protocol.__parse_req_str(req_str)
                 if expect_cmd and req_cmd != expect_cmd:
                     Protocol.response_server(conn, req_cmd, Protocol.Result.INVALID)
-                    raise ProtocolError('expects command: <%s>, receives command: <%s>' % (expect_cmd, req_cmd))
+                    raise ProtocolError('Expected <%s> while received <%s>.' % (expect_cmd, req_cmd))
                 else:
                     return req_cmd, req_data
             except BlockingIOError:
                 pass
             sleep(0.25)
             time_wait += 0.25
-        raise ProtocolError('waiting for server\'s request timeout after %d seconds' % timeout)
+        raise ProtocolError('Waiting server request timeout after %ds.' % timeout)
 
     @staticmethod
     def response_server(conn, cmd, data=''):
