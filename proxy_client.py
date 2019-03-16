@@ -173,18 +173,20 @@ class ProxyClient(ThreadedModule):
                 break
         if not port:
             raise ProxyError('Connection(fd=%d) not found.' % key_fd)
+        conn1 = self.__fd_to_socket[fd1]
+        conn2 = self.__fd_to_socket[fd2]
         log.info('Local(%s:%d) --x-> Server(%s:%d)' %
-                 (self.__fd_to_socket[fd1].getpeername()[0], port,
-                  self.__server_host, self.__port_map[port]))
-        self.__epoll.unregister(fd1)
-        self.__epoll.unregister(fd2)
-        self.__fd_to_socket[fd1].close()
-        self.__fd_to_socket[fd2].close()
+                 (conn1.getpeername()[0], conn1.getpeername()[1],
+                  conn2.getpeername()[0], conn2.getpeername()[1]))
         del self.__fd_to_fd[fd1]
         del self.__fd_to_fd[fd2]
         del self.__fd_to_socket[fd1]
         del self.__fd_to_socket[fd2]
         self.__port_fds[port].remove(fd1)
+        self.__epoll.unregister(fd1)
+        self.__epoll.unregister(fd2)
+        conn1.close()
+        conn2.close()
 
     def __thread_main(self):
         """主线程函数"""
@@ -211,8 +213,8 @@ class ProxyClient(ThreadedModule):
                             try:
                                 port, conn1, conn2 = self.__add_pair()
                                 log.info('Local(%s:%d) ----> Server(%s:%d)' %
-                                         (conn1.getpeername()[0], port,
-                                          self.__server_host, self.__port_map[port]))
+                                         (conn1.getpeername()[0], conn1.getpeername()[1],
+                                          conn2.getpeername()[0], conn2.getpeername()[1]))
                             except Exception as e:
                                 log.error(e)
                     elif event & ~select.EPOLLIN:
